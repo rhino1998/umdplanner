@@ -31,7 +31,7 @@ func main() {
 	}
 	store, err := testudo.LoadStore(f)
 
-	c, _ := (testudo.ParseClass("https://ntst.umd.edu/soc/201801/CMSC/CMSC250"))
+	c, _ := (testudo.ScrapeClass("https://ntst.umd.edu/soc/201801/CMSC/CMSC250"))
 	fmt.Println(c.Prerequisite)
 	fmt.Println(c.Restriction)
 	fmt.Println(c.Description)
