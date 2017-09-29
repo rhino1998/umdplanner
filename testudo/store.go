@@ -2,29 +2,37 @@ package testudo
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"sync"
+
+	"github.com/rhino1998/umdplanner/testudo/course"
+	"github.com/rhino1998/umdplanner/testudo/query"
 )
 
+//NewStore makes a new map-based store for classes
 func NewStore() ClassStore {
-	return &sliceStore{classes: make([]*Class, 0, 0)}
+	return &mapStore{classes: make(map[string]*course.Class)}
 }
 
+//LoadStore loads the store from reader as json
 func LoadStore(r io.Reader) (ClassStore, error) {
 	dec := json.NewDecoder(r)
-	var store []*Class
+	var classes map[string]*course.Class
 
-	err := dec.Decode(&store)
+	err := dec.Decode(&classes)
 
-	return &sliceStore{classes: store}, err
+	cs := &mapStore{classes: classes}
+	linkClasses(cs)
+	return cs, err
 }
 
-type sliceStore struct {
+type mapStore struct {
 	lock    sync.RWMutex
-	classes []*Class
+	classes map[string]*course.Class
 }
 
-func (cs *sliceStore) Dump(w io.Writer) error {
+func (cs *mapStore) Dump(w io.Writer) error {
 	cs.lock.RLock()
 	enc := json.NewEncoder(w)
 	err := enc.Encode(cs.classes)
@@ -34,17 +42,28 @@ func (cs *sliceStore) Dump(w io.Writer) error {
 	return err
 }
 
-func (cs *sliceStore) Store(c *Class) error {
+func (cs *mapStore) Get(code string) (*course.Class, error) {
+	cs.lock.RLock()
+	class, ok := cs.classes[code]
+	cs.lock.RUnlock()
+	var err error
+	if !ok {
+		err = fmt.Errorf("Class not found: %q", code)
+	}
+	return class, err
+}
+
+func (cs *mapStore) Set(c *course.Class) error {
 	cs.lock.Lock()
-	cs.classes = append(cs.classes, c)
+	cs.classes[c.Code] = c
 	cs.lock.Unlock()
 	return nil
 }
 
-func (cs *sliceStore) QueryAll() Query {
+func (cs *mapStore) QueryAll() query.Query {
 	return &allQuery{
-		eval: func() <-chan *Class {
-			out := make(chan *Class)
+		eval: func() <-chan *course.Class {
+			out := make(chan *course.Class)
 			go func() {
 				cs.lock.RLock()
 				for _, class := range cs.classes {
@@ -59,9 +78,9 @@ func (cs *sliceStore) QueryAll() Query {
 }
 
 type allQuery struct {
-	eval func() <-chan *Class
+	eval func() <-chan *course.Class
 }
 
-func (q *allQuery) Evaluate() <-chan *Class {
+func (q *allQuery) Evaluate() <-chan *course.Class {
 	return q.eval()
 }

@@ -25,13 +25,31 @@ func main() {
 		f.Close()
 		return
 	}
-	// f, err := os.Open("testudo.json")
-	// if err != nil {
-	// 	log.Fatalf("%v", err)
-	// }
-	// store, err := testudo.LoadStore(f)
+	f, err := os.Open("testudo.json")
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	store, err := testudo.LoadStore(f)
 
-	fmt.Println(testudo.ParseClass("https://ntst.umd.edu/soc/201801/CMSC/CMSC250"))
+	c, _ := (testudo.ParseClass("https://ntst.umd.edu/soc/201801/CMSC/CMSC250"))
+	fmt.Println(c.Prerequisite)
+	fmt.Println(c.Restriction)
+	fmt.Println(c.Description)
+	ch := store.QueryAll().Evaluate()
+	for class := range ch {
+		prereqs := ""
+
+		if len(class.Prereqs) == 0 {
+			continue
+		}
+
+		for _, req := range class.Prereqs {
+			prereqs += req.Code + ", "
+		}
+		fmt.Printf("[%s]: %s\n", class.Code, prereqs)
+	}
+	class, _ := store.Get("CMSC412")
+	fmt.Printf("%s\n", class.Prerequisite)
 
 	/*ch := (testudo.QueryWithExcludedTimes(store.QueryAll(),
 		testudo.Duration{

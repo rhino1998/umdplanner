@@ -11,16 +11,21 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/rhino1998/umdplanner/testudo/course"
+	"github.com/rhino1998/umdplanner/testudo/query"
 )
 
 const url = "https://ntst.umd.edu/soc/"
 
+//ClassStore stores and retrieves classes
 type ClassStore interface {
-	Store(*Class) error
-	QueryAll() Query
+	Set(*course.Class) error
+	Get(string) (*course.Class, error)
+	QueryAll() query.Query
 	Dump(io.Writer) error
 }
 
+//ScrapeAll scrapes all the classes from testudo.umd.edu
 func ScrapeAll(url string, cs ClassStore) error {
 	doc, err := goquery.NewDocument(url)
 	if err != nil {
@@ -43,6 +48,8 @@ func ScrapeAll(url string, cs ClassStore) error {
 	return nil
 }
 
+//ScrapeDepartment scrapes a whole department list of classes from
+//testudo.umd.edu
 func ScrapeDepartment(url string, cs ClassStore) error {
 	doc, err := goquery.NewDocument(url)
 	if err != nil {
@@ -56,11 +63,11 @@ func ScrapeDepartment(url string, cs ClassStore) error {
 		}
 		wg.Add(1)
 		go func() {
-			class, err := ParseClass(url + "/" + code)
+			class, err := ScrapeClass(url + "/" + code)
 			if err != nil {
 				log.Println(err)
 			}
-			cs.Store(class)
+			cs.Set(class)
 			wg.Done()
 		}()
 	})
@@ -70,7 +77,8 @@ func ScrapeDepartment(url string, cs ClassStore) error {
 
 }
 
-func ParseClass(url string) (*Class, error) {
+//ScrapeClass scrapes a class from testudo.umd.edu schedule of classes
+func ScrapeClass(url string) (*course.Class, error) {
 	doc, err := goquery.NewDocument(url)
 	if err != nil {
 		return nil, err
@@ -80,6 +88,7 @@ func ParseClass(url string) (*Class, error) {
 	if !ok {
 		return nil, fmt.Errorf("No class code found: %q", url)
 	}
+
 	fmt.Println(code)
 
 	title := s.Find(".course-title").First().Text()
@@ -96,14 +105,14 @@ func ParseClass(url string) (*Class, error) {
 		genedCodes[i] = strings.TrimSpace(s.Text())
 		i++
 	})
-	geneds := parseGenEd(genedCodes)
+	geneds := course.ParseGenEd(genedCodes)
 
 	sectionFields := s.Find(".section")
-	sections := make([]Section, sectionFields.Length())
+	sections := make([]course.Section, sectionFields.Length())
 	i = 0
 	sectionFields.Each(func(_ int, s *goquery.Selection) {
 		timesFields := s.Find(".row")
-		times := make([]Time, 0, timesFields.Length()*7)
+		times := make([]course.Time, 0, timesFields.Length()*7)
 
 		j := 0
 		timesFields.Each(func(_ int, s *goquery.Selection) {
@@ -123,13 +132,13 @@ func ParseClass(url string) (*Class, error) {
 			}
 
 			for _, day := range days {
-				times = append(times, Time{
+				times = append(times, course.Time{
 					Room: fmt.Sprintf(
 						"%s %s",
 						s.Find(".building-code").Text(),
 						s.Find(".class-room").Text(),
 					),
-					Duration: Duration{
+					Duration: course.Duration{
 						Start: start.AddDate(0, 0, int(day)),
 						End:   end.AddDate(0, 0, int(day)),
 					},
@@ -138,7 +147,7 @@ func ParseClass(url string) (*Class, error) {
 			}
 		})
 
-		sections[i] = Section{
+		sections[i] = course.Section{
 			Times:     times,
 			Code:      strings.TrimSpace(s.Find(".section-id").Text()),
 			Professor: s.Find(".section-instructor").First().Text(),
@@ -146,23 +155,38 @@ func ParseClass(url string) (*Class, error) {
 		i++
 	})
 
-	class := &Class{
+	class := &course.Class{
 		Code:        code,
 		Title:       title,
 		Credits:     credits,
 		GenEd:       geneds,
-		Description: s.Find(".approved-course-text").Text(),
-		Prerequisite: s.Find(".approved-course-text strong strong").
+		Prereqs:     []*course.Class{},
+		Description: s.Find(".approved-course-text").Last().Text(),
+		Prerequisite: strings.Replace(s.Find(".approved-course-text div strong").
 			FilterFunction(func(_ int, s *goquery.Selection) bool {
 				return s.Text() == "Prerequisite:"
-			}).Parent().Parent().Next().Text(),
-		Restriction: s.Find(".approved-course-text strong strong").
+			}).Parent().Text(), "Prerequisite: ", "", -1),
+		Restriction: strings.Replace(s.Find(".approved-course-text div strong").
 			FilterFunction(func(_ int, s *goquery.Selection) bool {
 				return s.Text() == "Restriction:"
-			}).Parent().Parent().Next().Text(),
+			}).Parent().Text(), "Restriction: ", "", -1),
 		Sections: sections,
 	}
 
 	return class, nil
 
+}
+
+func linkClasses(store ClassStore) {
+	ch := store.QueryAll().Evaluate()
+	for class := range ch {
+		reqs := course.MatchCode.FindAllString(class.Prerequisite, -1)
+		for _, req := range reqs {
+			oClass, err := store.Get(req)
+			if err != nil {
+				continue
+			}
+			class.Prereqs = append(class.Prereqs, oClass)
+		}
+	}
 }
