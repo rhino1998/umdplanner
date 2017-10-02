@@ -1,6 +1,10 @@
 package query
 
-import "github.com/rhino1998/umdplanner/testudo/course"
+import (
+	"context"
+
+	"github.com/rhino1998/umdplanner/testudo/course"
+)
 
 type genEd struct {
 	parent Query
@@ -8,15 +12,21 @@ type genEd struct {
 }
 
 type Query interface {
-	Evaluate() <-chan *course.Class
+	Evaluate(context.Context) <-chan *course.Class
 }
 
-func (q *genEd) Evaluate() <-chan *course.Class {
+func (q *genEd) Evaluate(ctx context.Context) <-chan *course.Class {
 	out := make(chan *course.Class)
+	ch := q.parent.Evaluate(ctx)
+
 	go func() {
-		for class := range q.parent.Evaluate() {
+		for class := range ch {
 			if class.HasGenEd(q.gened) {
-				out <- class
+				select {
+				case out <- class:
+				case <-ctx.Done():
+					break
+				}
 			}
 		}
 		close(out)
@@ -29,10 +39,12 @@ type excludeTimes struct {
 	durations []course.Duration
 }
 
-func (q *excludeTimes) Evaluate() <-chan *course.Class {
+func (q *excludeTimes) Evaluate(ctx context.Context) <-chan *course.Class {
 	out := make(chan *course.Class)
+	ch := q.parent.Evaluate(ctx)
+
 	go func() {
-		for class := range q.parent.Evaluate() {
+		for class := range ch {
 			conflict := false
 			for _, section := range class.Sections {
 				if section.Conflicts(q.durations...) {
@@ -40,7 +52,11 @@ func (q *excludeTimes) Evaluate() <-chan *course.Class {
 				}
 			}
 			if !conflict {
-				out <- class
+				select {
+				case out <- class:
+				case <-ctx.Done():
+					break
+				}
 			}
 		}
 		close(out)

@@ -1,6 +1,7 @@
 package testudo
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,12 +11,11 @@ import (
 	"github.com/rhino1998/umdplanner/testudo/query"
 )
 
-//NewStore makes a new map-based store for classes
 func NewStore() ClassStore {
 	return &mapStore{classes: make(map[string]*course.Class)}
 }
 
-//LoadStore loads the store from reader as json
+//LoadStore from reader as json
 func LoadStore(r io.Reader) (ClassStore, error) {
 	dec := json.NewDecoder(r)
 	var classes map[string]*course.Class
@@ -62,14 +62,19 @@ func (cs *mapStore) Set(c *course.Class) error {
 
 func (cs *mapStore) QueryAll() query.Query {
 	return &allQuery{
-		eval: func() <-chan *course.Class {
+		eval: func(ctx context.Context) <-chan *course.Class {
 			out := make(chan *course.Class)
 			go func() {
 				cs.lock.RLock()
+				defer cs.lock.RUnlock()
 				for _, class := range cs.classes {
-					out <- class
+					select {
+					case out <- class:
+					case <-ctx.Done():
+						break
+					}
+
 				}
-				cs.lock.RUnlock()
 				close(out)
 			}()
 			return out
@@ -78,9 +83,9 @@ func (cs *mapStore) QueryAll() query.Query {
 }
 
 type allQuery struct {
-	eval func() <-chan *course.Class
+	eval func(context.Context) <-chan *course.Class
 }
 
-func (q *allQuery) Evaluate() <-chan *course.Class {
-	return q.eval()
+func (q *allQuery) Evaluate(ctx context.Context) <-chan *course.Class {
+	return q.eval(ctx)
 }

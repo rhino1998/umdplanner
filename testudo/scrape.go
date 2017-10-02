@@ -1,6 +1,7 @@
 package testudo
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -17,7 +18,6 @@ import (
 
 const url = "https://ntst.umd.edu/soc/"
 
-//ClassStore stores and retrieves classes
 type ClassStore interface {
 	Set(*course.Class) error
 	Get(string) (*course.Class, error)
@@ -165,11 +165,11 @@ func ScrapeClass(url string) (*course.Class, error) {
 		Prerequisite: strings.Replace(s.Find(".approved-course-text div strong").
 			FilterFunction(func(_ int, s *goquery.Selection) bool {
 				return s.Text() == "Prerequisite:"
-			}).Parent().Text(), "Prerequisite: ", "", -1),
+			}).Parent().First().Text(), "Prerequisite: ", "", -1),
 		Restriction: strings.Replace(s.Find(".approved-course-text div strong").
 			FilterFunction(func(_ int, s *goquery.Selection) bool {
 				return s.Text() == "Restriction:"
-			}).Parent().Text(), "Restriction: ", "", -1),
+			}).Parent().First().Text(), "Restriction: ", "", -1),
 		Sections: sections,
 	}
 
@@ -178,7 +178,7 @@ func ScrapeClass(url string) (*course.Class, error) {
 }
 
 func linkClasses(store ClassStore) {
-	ch := store.QueryAll().Evaluate()
+	ch := store.QueryAll().Evaluate(context.Background())
 	for class := range ch {
 		reqs := course.MatchCode.FindAllString(class.Prerequisite, -1)
 		for _, req := range reqs {

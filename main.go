@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -31,14 +32,10 @@ func main() {
 	}
 	store, err := testudo.LoadStore(f)
 
-	c, _ := (testudo.ScrapeClass("https://ntst.umd.edu/soc/201801/CMSC/CMSC250"))
-	fmt.Println(c.Prerequisite)
-	fmt.Println(c.Restriction)
-	fmt.Println(c.Description)
-	ch := store.QueryAll().Evaluate()
+	ch := store.QueryAll().Evaluate(context.Background())
+
 	for class := range ch {
 		prereqs := ""
-
 		if len(class.Prereqs) == 0 {
 			continue
 		}
@@ -51,19 +48,4 @@ func main() {
 	class, _ := store.Get("CMSC412")
 	fmt.Printf("%s\n", class.Prerequisite)
 
-	/*ch := (testudo.QueryWithExcludedTimes(store.QueryAll(),
-		testudo.Duration{
-			Start: time.Time{}.AddDate(-1, 0, 2).Add(10 * time.Hour),
-			End:   time.Time{}.AddDate(-1, 0, 2).Add(10*time.Hour + 50*time.Minute),
-		},
-		testudo.Duration{
-			Start: time.Time{}.AddDate(-1, 0, 2).Add(8 * time.Hour),
-			End:   time.Time{}.AddDate(-1, 0, 2).Add(11*time.Hour + 50*time.Minute),
-		},
-	)).Evaluate()
-
-	// ch := store.QueryAll().Evaluate()
-	for class := range ch {
-		fmt.Println(class)
-	}*/
 }

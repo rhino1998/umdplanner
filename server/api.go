@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -11,11 +12,52 @@ type server struct {
 	store testudo.ClassStore
 }
 
-type courseQuery struct {
+func newServer(store testudo.ClassStore) (*server, error) {
+	return &server{store: store}, nil
 }
 
-func (s *server) QueryCourses(w http.ResponseWriter, r *http.Request) {
-	dec, err := json.NewDecoder(r.Body)
+func (s *server) QueryCoursesGET(w http.ResponseWriter, r *http.Request) {
+	enc := json.NewEncoder(w)
+	defer r.Body.Close()
 
-	dec.Decode()
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	ch := s.store.QueryAll().Evaluate(ctx)
+	for class := range ch {
+		err := enc.Encode(class)
+		if err != nil {
+			send501(w, err)
+			return
+		}
+	}
+}
+
+func (s *server) FlagCoursePOST(w http.ResponseWriter, r *http.Request) {
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var flaggedCourse struct {
+		Code   string `json:"code"`
+		Reason string `json:"reason"`
+	}
+
+	err := dec.Decode(&flaggedCourse)
+	if err != nil {
+		send501(w, err)
+	}
+
+	//TODO handle courseFlags
+}
+
+func (s *server) QueryCoursesPOST(w http.ResponseWriter, r *http.Request) {
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	//TODO figure out query format
+	var q string
+	err := dec.Decode(&q)
+	if err != nil {
+		send501(w, err)
+		return
+	}
 }
