@@ -34,7 +34,10 @@ func main() {
 
 	ch := store.QueryAll().Evaluate(context.Background())
 
+	count := 0
+
 	for class := range ch {
+		count++
 		prereqs := ""
 		if len(class.Prereqs) == 0 {
 			continue
@@ -45,6 +48,7 @@ func main() {
 		}
 		fmt.Printf("[%s]: %s\n", class.Code, prereqs)
 	}
+	fmt.Println(count)
 	class, _ := store.Get("CMSC412")
 	fmt.Printf("%s\n", class.Prerequisite)
 

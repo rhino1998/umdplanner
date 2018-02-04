@@ -7,18 +7,17 @@ import (
 	"io"
 	"sync"
 
-	"github.com/rhino1998/umdplanner/testudo/course"
-	"github.com/rhino1998/umdplanner/testudo/query"
+	"github.com/rhino1998/umdplanner/testudo/class"
 )
 
 func NewStore() ClassStore {
-	return &mapStore{classes: make(map[string]*course.Class)}
+	return &mapStore{classes: make(map[string]*class.Class)}
 }
 
 //LoadStore from reader as json
 func LoadStore(r io.Reader) (ClassStore, error) {
 	dec := json.NewDecoder(r)
-	var classes map[string]*course.Class
+	var classes map[string]*class.Class
 
 	err := dec.Decode(&classes)
 
@@ -29,7 +28,7 @@ func LoadStore(r io.Reader) (ClassStore, error) {
 
 type mapStore struct {
 	lock    sync.RWMutex
-	classes map[string]*course.Class
+	classes map[string]*class.Class
 }
 
 func (cs *mapStore) Dump(w io.Writer) error {
@@ -42,7 +41,7 @@ func (cs *mapStore) Dump(w io.Writer) error {
 	return err
 }
 
-func (cs *mapStore) Get(code string) (*course.Class, error) {
+func (cs *mapStore) Get(code string) (*class.Class, error) {
 	cs.lock.RLock()
 	class, ok := cs.classes[code]
 	cs.lock.RUnlock()
@@ -53,23 +52,23 @@ func (cs *mapStore) Get(code string) (*course.Class, error) {
 	return class, err
 }
 
-func (cs *mapStore) Set(c *course.Class) error {
+func (cs *mapStore) Set(c *class.Class) error {
 	cs.lock.Lock()
 	cs.classes[c.Code] = c
 	cs.lock.Unlock()
 	return nil
 }
 
-func (cs *mapStore) QueryAll() query.Query {
+func (cs *mapStore) QueryAll() class.Query {
 	return &allQuery{
-		eval: func(ctx context.Context) <-chan *course.Class {
-			out := make(chan *course.Class)
+		eval: func(ctx context.Context) <-chan *class.Class {
+			out := make(chan *class.Class)
 			go func() {
 				cs.lock.RLock()
 				defer cs.lock.RUnlock()
-				for _, class := range cs.classes {
+				for _, c := range cs.classes {
 					select {
-					case out <- class:
+					case out <- c:
 					case <-ctx.Done():
 						break
 					}
@@ -83,9 +82,9 @@ func (cs *mapStore) QueryAll() query.Query {
 }
 
 type allQuery struct {
-	eval func(context.Context) <-chan *course.Class
+	eval func(context.Context) <-chan *class.Class
 }
 
-func (q *allQuery) Evaluate(ctx context.Context) <-chan *course.Class {
+func (q *allQuery) Evaluate(ctx context.Context) <-chan *class.Class {
 	return q.eval(ctx)
 }

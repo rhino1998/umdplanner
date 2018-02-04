@@ -1,4 +1,4 @@
-package course
+package class
 
 import "strings"
 

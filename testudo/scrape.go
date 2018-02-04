@@ -12,16 +12,17 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/rhino1998/umdplanner/testudo/course"
-	"github.com/rhino1998/umdplanner/testudo/query"
+	"github.com/rhino1998/umdplanner/testudo/class"
+	"github.com/rhino1998/umdplanner/testudo/duration"
+	"github.com/rhino1998/umdplanner/testudo/section"
 )
 
 const url = "https://ntst.umd.edu/soc/"
 
 type ClassStore interface {
-	Set(*course.Class) error
-	Get(string) (*course.Class, error)
-	QueryAll() query.Query
+	Set(*class.Class) error
+	Get(string) (*class.Class, error)
+	QueryAll() class.Query
 	Dump(io.Writer) error
 }
 
@@ -63,11 +64,11 @@ func ScrapeDepartment(url string, cs ClassStore) error {
 		}
 		wg.Add(1)
 		go func() {
-			class, err := ScrapeClass(url + "/" + code)
+			c, err := ScrapeClass(url + "/" + code)
 			if err != nil {
 				log.Println(err)
 			}
-			cs.Set(class)
+			cs.Set(c)
 			wg.Done()
 		}()
 	})
@@ -78,7 +79,7 @@ func ScrapeDepartment(url string, cs ClassStore) error {
 }
 
 //ScrapeClass scrapes a class from testudo.umd.edu schedule of classes
-func ScrapeClass(url string) (*course.Class, error) {
+func ScrapeClass(url string) (*class.Class, error) {
 	doc, err := goquery.NewDocument(url)
 	if err != nil {
 		return nil, err
@@ -105,14 +106,14 @@ func ScrapeClass(url string) (*course.Class, error) {
 		genedCodes[i] = strings.TrimSpace(s.Text())
 		i++
 	})
-	geneds := course.ParseGenEd(genedCodes)
+	geneds := class.ParseGenEd(genedCodes)
 
 	sectionFields := s.Find(".section")
-	sections := make([]course.Section, sectionFields.Length())
+	sections := make([]*section.Section, sectionFields.Length())
 	i = 0
 	sectionFields.Each(func(_ int, s *goquery.Selection) {
 		timesFields := s.Find(".row")
-		times := make([]course.Time, 0, timesFields.Length()*7)
+		times := make([]*section.Meeting, 0, timesFields.Length()*7)
 
 		j := 0
 		timesFields.Each(func(_ int, s *goquery.Selection) {
@@ -132,13 +133,10 @@ func ScrapeClass(url string) (*course.Class, error) {
 			}
 
 			for _, day := range days {
-				times = append(times, course.Time{
-					Room: fmt.Sprintf(
-						"%s %s",
-						s.Find(".building-code").Text(),
-						s.Find(".class-room").Text(),
-					),
-					Duration: course.Duration{
+				times = append(times, &section.Meeting{
+					Building: s.Find(".building-code").Text(),
+					Room:     s.Find(".class-room").Text(),
+					Duration: duration.Duration{
 						Start: start.AddDate(0, 0, int(day)),
 						End:   end.AddDate(0, 0, int(day)),
 					},
@@ -147,20 +145,20 @@ func ScrapeClass(url string) (*course.Class, error) {
 			}
 		})
 
-		sections[i] = course.Section{
-			Times:     times,
+		sections[i] = &section.Section{
+			Meetings:  times,
 			Code:      strings.TrimSpace(s.Find(".section-id").Text()),
 			Professor: s.Find(".section-instructor").First().Text(),
 		}
 		i++
 	})
 
-	class := &course.Class{
+	c := &class.Class{
 		Code:        code,
 		Title:       title,
 		Credits:     credits,
 		GenEd:       geneds,
-		Prereqs:     []*course.Class{},
+		Prereqs:     []*class.Class{},
 		Description: s.Find(".approved-course-text").Last().Text(),
 		Prerequisite: strings.Replace(s.Find(".approved-course-text div strong").
 			FilterFunction(func(_ int, s *goquery.Selection) bool {
@@ -173,20 +171,20 @@ func ScrapeClass(url string) (*course.Class, error) {
 		Sections: sections,
 	}
 
-	return class, nil
+	return c, nil
 
 }
 
 func linkClasses(store ClassStore) {
 	ch := store.QueryAll().Evaluate(context.Background())
-	for class := range ch {
-		reqs := course.MatchCode.FindAllString(class.Prerequisite, -1)
+	for c := range ch {
+		reqs := class.MatchCode.FindAllString(c.Prerequisite, -1)
 		for _, req := range reqs {
 			oClass, err := store.Get(req)
 			if err != nil {
 				continue
 			}
-			class.Prereqs = append(class.Prereqs, oClass)
+			c.Prereqs = append(c.Prereqs, oClass)
 		}
 	}
 }

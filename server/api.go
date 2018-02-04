@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/rhino1998/umdplanner/testudo"
@@ -25,8 +26,10 @@ func (s *server) QueryCoursesGET(w http.ResponseWriter, r *http.Request) {
 	ch := s.store.QueryAll().Evaluate(ctx)
 	for class := range ch {
 		err := enc.Encode(class)
+		fmt.Println(class.Code)
 		if err != nil {
 			send501(w, err)
+			fmt.Println("fail")
 			return
 		}
 	}
